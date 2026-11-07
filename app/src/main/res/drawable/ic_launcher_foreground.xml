@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Lens ring -->
+    <path
+        android:fillColor="#00F2FF"
+        android:fillType="evenOdd"
+        android:pathData="M24,54 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0 Z M31.5,54 a22.5,22.5 0 1,0 45,0 a22.5,22.5 0 1,0 -45,0 Z" />
+
+    <!-- Diagonal bar -->
+    <path
+        android:fillColor="#00F2FF"
+        android:pathData="M74.64,37.88 L70.12,33.36 L33.36,70.12 L37.88,74.64 Z" />
+
+    <!-- Aperture, upper-left piece -->
+    <path
+        android:fillColor="#00F2FF"
+        android:pathData="M58.57,41.51 L41.51,58.57 A13.3,13.3 0 0 1 58.57,41.51 Z" />
+
+    <!-- Aperture, lower-right piece -->
+    <path
+        android:fillColor="#00F2FF"
+        android:pathData="M66.49,49.43 L49.43,66.49 A13.3,13.3 0 0 0 66.49,49.43 Z" />
+</vector>
