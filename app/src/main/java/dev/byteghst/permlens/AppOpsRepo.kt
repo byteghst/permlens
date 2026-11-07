@@ -39,6 +39,9 @@ object AppOpsRepo {
     private val getOpsMethod by lazy {
         serviceClass.getMethod("getOpsForPackage", intType, String::class.java, IntArray::class.java)
     }
+    private val setModeMethod by lazy {
+        serviceClass.getMethod("setMode", intType, intType, String::class.java, intType)
+    }
 
     /** Returns every op for the package; ops never touched get their default mode and lastAccess 0. */
     fun getOps(uid: Int, pkg: String): List<OpInfo> {
@@ -65,5 +68,10 @@ object AppOpsRepo {
             val name = (opToName.invoke(null, code) as? String ?: "op_$code").removePrefix("android:")
             OpInfo(code, name, p?.first ?: def, def, p?.second ?: 0L)
         }
+    }
+
+    /** Sets the mode for one op. Modes: 0 allow, 1 ignore, 2 deny, 3 default, 4 foreground. */
+    fun setMode(uid: Int, pkg: String, code: Int, mode: Int) {
+        setModeMethod.invoke(service, code, uid, pkg, mode)
     }
 }
