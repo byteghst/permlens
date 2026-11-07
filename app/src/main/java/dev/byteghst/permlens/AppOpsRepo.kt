@@ -35,12 +35,25 @@ object AppOpsRepo {
 
     private val numOps: Int by lazy { aomClass.getField("_NUM_OP").getInt(null) }
     private val opToName by lazy { aomClass.getMethod("opToPublicName", intType) }
+    private val opToInternalName by lazy { aomClass.getMethod("opToName", intType) }
     private val opToDefault by lazy { aomClass.getMethod("opToDefaultMode", intType) }
     private val getOpsMethod by lazy {
         serviceClass.getMethod("getOpsForPackage", intType, String::class.java, IntArray::class.java)
     }
     private val setModeMethod by lazy {
         serviceClass.getMethod("setMode", intType, intType, String::class.java, intType)
+    }
+
+    /** Public name, else the internal name (e.g. COARSE_LOCATION), else op_<code>. Never blank. */
+    private fun nameFor(code: Int): String {
+        val pub = runCatching { opToName.invoke(null, code) as? String }.getOrNull()
+            ?.removePrefix("android:")
+            ?.takeIf { it.isNotBlank() }
+        if (pub != null) return pub
+        val internal = runCatching { opToInternalName.invoke(null, code) as? String }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.lowercase()
+        return internal ?: "op_$code"
     }
 
     /** Returns every op for the package; ops never touched get their default mode and lastAccess 0. */
@@ -65,8 +78,7 @@ object AppOpsRepo {
         return (0 until numOps).map { code ->
             val p = present[code]
             val def = (opToDefault.invoke(null, code) as? Int) ?: 3
-            val name = (opToName.invoke(null, code) as? String ?: "op_$code").removePrefix("android:")
-            OpInfo(code, name, p?.first ?: def, def, p?.second ?: 0L)
+            OpInfo(code, nameFor(code), p?.first ?: def, def, p?.second ?: 0L)
         }
     }
 
