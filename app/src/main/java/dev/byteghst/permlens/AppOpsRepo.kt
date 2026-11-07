@@ -56,7 +56,10 @@ object AppOpsRepo {
         return internal ?: "op_$code"
     }
 
-    /** Returns every op for the package; ops never touched get their default mode and lastAccess 0. */
+    /**
+     * Returns every real op for the package; ops never touched get their default mode and
+     * lastAccess 0. Retired placeholder slots (DEPRECATED_*) are left out.
+     */
     fun getOps(uid: Int, pkg: String): List<OpInfo> {
         val present = HashMap<Int, Pair<Int, Long>>()
         val packages = getOpsMethod.invoke(service, uid, pkg, null) as? List<*>
@@ -75,10 +78,12 @@ object AppOpsRepo {
             }
         }
 
-        return (0 until numOps).map { code ->
+        return (0 until numOps).mapNotNull { code ->
+            val name = nameFor(code)
+            if (name.contains("deprecated", ignoreCase = true)) return@mapNotNull null
             val p = present[code]
             val def = (opToDefault.invoke(null, code) as? Int) ?: 3
-            OpInfo(code, nameFor(code), p?.first ?: def, def, p?.second ?: 0L)
+            OpInfo(code, name, p?.first ?: def, def, p?.second ?: 0L)
         }
     }
 
