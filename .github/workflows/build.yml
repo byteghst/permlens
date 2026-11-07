@@ -1,0 +1,52 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ['README.md']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      KEYSTORE_PATH: ${{ github.workspace }}/release.p12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Signing key (create once, reuse after)
+        run: |
+          if gh release download signing-key -p release.p12 -D . -R "$GITHUB_REPOSITORY" 2>/dev/null; then
+            echo "Reusing stored signing key"
+          else
+            keytool -genkeypair -keystore release.p12 -storetype PKCS12 \
+              -storepass permlens-key -keypass permlens-key -alias permlens \
+              -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=PermLens, O=byteghst"
+            gh release create signing-key release.p12 -R "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --latest=false \
+              --title "signing-key" --notes "Persistent signing key. Do not delete."
+          fi
+
+      - name: Build
+        run: gradle --no-daemon :app:assembleRelease
+
+      - name: Publish Latest build
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk PermLens.apk
+          gh release delete latest --cleanup-tag -y -R "$GITHUB_REPOSITORY" || true
+          gh release create latest PermLens.apk -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Latest build" \
+            --notes "Commit ${GITHUB_SHA::7}"
