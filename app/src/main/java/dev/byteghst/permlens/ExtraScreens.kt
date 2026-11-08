@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package dev.byteghst.permlens
 
 import android.content.Intent
@@ -8,25 +10,32 @@ import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.*
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointerInput
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -34,20 +43,49 @@ fun relTime(ms: Long): String =
     DateUtils.getRelativeTimeSpanString(ms, System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS).toString()
 
 // ---------------------------------------------------------------------------
-// Root: wraps the existing Apps screen and adds Ops / Activity / More tabs
+// Root: wraps the Apps screen and adds Ops / Activity / More tabs
 // ---------------------------------------------------------------------------
+
+private data class TabSpec(val label: String, val icon: ImageVector)
+
+private val Tabs = listOf(
+    TabSpec("Apps", Icons.Filled.Home),
+    TabSpec("Ops", Icons.Filled.Build),
+    TabSpec("Activity", Icons.Filled.Notifications),
+    TabSpec("More", Icons.Filled.Settings)
+)
 
 @Composable
 fun PermLensRoot() {
     var tab by remember { mutableStateOf(0) }
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+    val cs = MaterialTheme.colorScheme
+    Scaffold(
+        containerColor = cs.surface,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            NavigationBar(containerColor = cs.surfaceContainer) {
+                Tabs.forEachIndexed { i, t ->
+                    NavigationBarItem(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        icon = { Icon(t.icon, contentDescription = null) },
+                        label = { Text(t.label) }
+                    )
+                }
+            }
+        }
+    ) { inner ->
+        Box(Modifier.padding(inner).fillMaxSize()) {
+            // Apps stays composed underneath so its selection and scroll survive tab switches.
             PermLensApp()
-            if (tab != 0) {
-                BackHandler { tab = 0 }
-                AuroraBackground {
-                    Box(Modifier.fillMaxSize().pointerInput(Unit) {}) {
-                        when (tab) {
+            if (tab != 0) BackHandler { tab = 0 }
+            Crossfade(targetState = tab, animationSpec = tween(220), label = "tabs") { t ->
+                if (t != 0) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize().pointerInput(Unit) {},
+                        color = cs.surface
+                    ) {
+                        when (t) {
                             1 -> OpsTab()
                             2 -> ActivityTab()
                             else -> MoreTab()
@@ -55,9 +93,6 @@ fun PermLensRoot() {
                     }
                 }
             }
-        }
-        Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Segmented(listOf("Apps", "Ops", "Activity", "More"), tab, { tab = it })
         }
     }
 }
@@ -91,147 +126,13 @@ private fun rememberCatalog(): Pair<Map<String, String>, Set<String>> {
     return data
 }
 
-private class ToastState {
-    var text by mutableStateOf("")
-    var tick by mutableStateOf(0)
-    var shown by mutableStateOf(false)
-    fun show(t: String) {
-        text = t
-        tick++
-        shown = true
-    }
-}
-
-@Composable
-private fun rememberToast(): ToastState {
-    val s = remember { ToastState() }
-    LaunchedEffect(s.tick) {
-        if (s.tick > 0) {
-            delay(2600)
-            s.shown = false
-        }
-    }
-    return s
-}
-
-@Composable
-private fun BackPill(onBack: () -> Unit) {
-    Row(
-        Modifier.bouncyClick(onBack).glass(RoundedCornerShape(50))
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text("\u2039", color = Pal.Cyan, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.width(6.dp))
-        Text("Back", color = Pal.TextHi, fontWeight = FontWeight.Medium)
-    }
-}
-
-@Composable
-private fun PillButton(text: String, onClick: () -> Unit) {
-    Box(
-        Modifier.bouncyClick(onClick).glass(RoundedCornerShape(50))
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        Text(text, color = Pal.TextHi, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-    }
-}
-
-@Composable
-private fun SearchBox(query: String, onQuery: (String) -> Unit, hint: String) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQuery,
-        placeholder = { Text(hint, color = Pal.TextLo) },
-        singleLine = true,
-        shape = RoundedCornerShape(18.dp),
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                Text(
-                    "\u2715",
-                    color = Pal.TextLo,
-                    modifier = Modifier.padding(end = 8.dp).clip(CircleShape)
-                        .clickable { onQuery("") }.padding(10.dp)
-                )
-            }
-        },
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Pal.Cyan,
-            unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
-            focusedContainerColor = Color.White.copy(alpha = 0.07f),
-            unfocusedContainerColor = Color.White.copy(alpha = 0.04f),
-            cursorColor = Pal.Cyan,
-            focusedTextColor = Pal.TextHi,
-            unfocusedTextColor = Pal.TextHi
-        ),
-        modifier = Modifier.fillMaxWidth()
-    )
-}
-
-@Composable
-private fun SheetOption(mode: Int, current: Boolean, index: Int, onClick: () -> Unit) {
-    val c = modeColor(mode)
-    val shape = RoundedCornerShape(16.dp)
-    Row(
-        Modifier.fillMaxWidth()
-            .entrance(index)
-            .bouncyClick(onClick)
-            .clip(shape)
-            .background(if (current) c.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.05f))
-            .border(1.dp, if (current) c.copy(alpha = 0.6f) else Color.White.copy(alpha = 0.08f), shape)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(Modifier.size(12.dp).background(c, CircleShape))
-        Spacer(Modifier.width(14.dp))
-        Column(Modifier.weight(1f)) {
-            Text(modeLabel(mode), color = Pal.TextHi, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(modeHint(mode), color = Pal.TextLo, fontSize = 12.sp)
-        }
-        if (current) Text("\u2713", color = c, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModeSheet(
-    title: String,
-    subtitle: String,
-    current: Int,
-    onPick: (Int) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = Pal.Surface,
-        contentColor = Pal.TextHi
-    ) {
-        Column(
-            Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(title, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Pal.TextHi)
-            Text(subtitle, fontSize = 12.sp, color = Pal.TextLo)
-            Spacer(Modifier.height(4.dp))
-            listOf(0, 1, 2, 4, 3).forEachIndexed { i, m ->
-                SheetOption(m, m == current, i) {
-                    scope.launch { sheetState.hide() }.invokeOnCompletion { onDismiss() }
-                    onPick(m)
-                }
-            }
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Ops tab: pick an op, see which apps use it
 // ---------------------------------------------------------------------------
 
 @Composable
 private fun OpsTab() {
+    val cs = MaterialTheme.colorScheme
     var picked by remember { mutableStateOf<Pair<Int, String>?>(null) }
     var query by remember { mutableStateOf("") }
     val all = remember { runCatching { AppOpsRepo.opNames() }.getOrDefault(emptyList()) }
@@ -245,39 +146,55 @@ private fun OpsTab() {
         BackHandler { picked = null }
         OpHoldersScreen(p, onBack = { picked = null })
     } else {
-        Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(16.dp))
-            GradientTitle("Operations")
-            Text("Pick one to see which apps use it", color = Pal.TextLo, fontSize = 14.sp)
-            Spacer(Modifier.height(14.dp))
-            SearchBox(query, { query = it }, "Search operations")
-            Spacer(Modifier.height(8.dp))
+        ScreenFrame(title = "Operations") {
             LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                Modifier.weight(1f).fillMaxWidth(),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
+                item(key = "header") {
+                    Column {
+                        Text(
+                            "Pick one to see which apps use it",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = cs.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp, bottom = 10.dp)
+                        )
+                        SearchField(query, { query = it }, "Search operations")
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
                 itemsIndexed(shown, key = { _, o -> o.first }) { i, op ->
-                    Row(
-                        Modifier.fillMaxWidth()
-                            .entrance(i)
-                            .bouncyClick { picked = op }
-                            .glass()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    PressSurface(
+                        onClick = { picked = op },
+                        modifier = Modifier.fillMaxWidth().entrance(i),
+                        restCorner = 20.dp,
+                        pressedCorner = 10.dp
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                prettyOp(op.second),
-                                color = Pal.TextHi,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                        Row(
+                            Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    prettyOp(op.second),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = cs.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    op.second,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = cs.onSurfaceVariant
+                                )
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = cs.onSurfaceVariant
                             )
-                            Text(op.second, color = Pal.TextLo, fontSize = 12.sp)
                         }
-                        Text("\u203A", color = Pal.TextLo, fontSize = 24.sp)
                     }
                 }
             }
@@ -287,6 +204,7 @@ private fun OpsTab() {
 
 @Composable
 private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val toast = rememberToast()
     val (labels, system) = rememberCatalog()
@@ -328,83 +246,83 @@ private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
         )
     }
 
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
-            Spacer(Modifier.height(12.dp))
-            Row { BackPill(onBack) }
-            Spacer(Modifier.height(14.dp))
-            Text(
-                prettyOp(op.second),
-                color = Pal.TextHi,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+    ScreenFrame(
+        title = prettyOp(op.second),
+        onBack = onBack,
+        overlay = {
+            ToastPill(
+                visible = toast.shown,
+                text = toast.text,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
             )
-            Text(
-                "Apps that used it or have a custom mode. Tap one to change it.",
-                color = Pal.TextLo,
-                fontSize = 13.sp
-            )
-            Spacer(Modifier.height(12.dp))
-
-            val err = error
-            val list = entries
-            when {
-                err != null -> Column(Modifier.fillMaxWidth().glass().padding(16.dp)) {
-                    Text("Failed to read", color = Pal.Deny, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Spacer(Modifier.height(8.dp))
-                    SelectionContainer(Modifier.verticalScroll(rememberScrollState())) {
-                        Text(err, color = Pal.TextLo, fontSize = 12.sp)
-                    }
+        }
+    ) {
+        val err = error
+        val list = entries
+        when {
+            err != null -> ErrorCard("Failed to read", err, Modifier.padding(horizontal = 16.dp))
+            list == null -> Column(Modifier.padding(horizontal = 16.dp)) {
+                SkeletonList(rows = 6, rowHeight = 64.dp)
+            }
+            else -> {
+                val userCount = remember(list, system) { list.count { it.pkg !in system } }
+                val shown = remember(list, userOnly, system) {
+                    list.filter { !userOnly || it.pkg !in system }.sortedByDescending { it.lastAccess }
                 }
-                list == null -> SkeletonList(rows = 6, rowHeight = 64.dp)
-                else -> {
-                    val userCount = remember(list, system) { list.count { it.pkg !in system } }
-                    val shown = remember(list, userOnly, system) {
-                        list.filter { !userOnly || it.pkg !in system }.sortedByDescending { it.lastAccess }
+                LazyColumn(
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    item(key = "header") {
+                        Column {
+                            Text(
+                                "Apps that used it or have a custom mode. Tap one to change it.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = cs.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 8.dp, bottom = 10.dp)
+                            )
+                            ConnectedGroup(
+                                listOf("User apps ($userCount)", "All (${list.size})"),
+                                if (userOnly) 0 else 1,
+                                { userOnly = it == 0 }
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
                     }
-                    Segmented(
-                        listOf("User apps ($userCount)", "All (${list.size})"),
-                        if (userOnly) 0 else 1,
-                        { userOnly = it == 0 }
-                    )
-                    Spacer(Modifier.height(4.dp))
                     if (shown.isEmpty()) {
-                        Text(
-                            "No apps to show",
-                            color = Pal.TextLo,
-                            modifier = Modifier.padding(top = 40.dp).fillMaxWidth()
-                        )
+                        item(key = "empty") {
+                            Text(
+                                "No apps to show",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = cs.onSurfaceVariant,
+                                modifier = Modifier.fillMaxWidth().padding(top = 40.dp)
+                            )
+                        }
                     }
-                    LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(shown) { i, e ->
-                            val name = labels[e.pkg] ?: e.pkg
-                            Row(
-                                Modifier.fillMaxWidth()
-                                    .entrance(i)
-                                    .bouncyClick { editing = e }
-                                    .glass()
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                AppIcon(e.pkg, name, 42.dp)
+                    itemsIndexed(shown) { i, e ->
+                        val name = labels[e.pkg] ?: e.pkg
+                        PressSurface(
+                            onClick = { editing = e },
+                            modifier = Modifier.fillMaxWidth().entrance(i),
+                            restCorner = 20.dp,
+                            pressedCorner = 10.dp
+                        ) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AppIcon(e.pkg, name, 44.dp)
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         name,
-                                        color = Pal.TextHi,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = cs.onSurface,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         if (e.lastAccess > 0) relTime(e.lastAccess) else "never used",
-                                        color = Pal.TextLo,
-                                        fontSize = 12.sp
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = cs.onSurfaceVariant
                                     )
                                 }
                                 Spacer(Modifier.width(8.dp))
@@ -415,11 +333,6 @@ private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
                 }
             }
         }
-        ToastPill(
-            visible = toast.shown,
-            text = toast.text,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
-        )
     }
 }
 
@@ -429,6 +342,7 @@ private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
 
 @Composable
 private fun ActivityTab() {
+    val cs = MaterialTheme.colorScheme
     val (labels, system) = rememberCatalog()
     var entries by remember { mutableStateOf<List<OpEntryInfo>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -445,28 +359,22 @@ private fun ActivityTab() {
         }
     }
 
-    Column(Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)) {
-        Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                GradientTitle("Activity")
-                Text("What your apps touched recently", color = Pal.TextLo, fontSize = 14.sp)
+    ScreenFrame(
+        title = "Activity",
+        actions = {
+            FilledTonalIconButton(onClick = { reload++ }) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
             }
-            PillButton("Refresh") { reload++ }
+            Spacer(Modifier.width(8.dp))
         }
-        Spacer(Modifier.height(14.dp))
-
+    ) {
         val err = error
         val list = entries
         when {
-            err != null -> Column(Modifier.fillMaxWidth().glass().padding(16.dp)) {
-                Text("Failed to read", color = Pal.Deny, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Spacer(Modifier.height(8.dp))
-                SelectionContainer(Modifier.verticalScroll(rememberScrollState())) {
-                    Text(err, color = Pal.TextLo, fontSize = 12.sp)
-                }
+            err != null -> ErrorCard("Failed to read", err, Modifier.padding(horizontal = 16.dp))
+            list == null -> Column(Modifier.padding(horizontal = 16.dp)) {
+                SkeletonList(rows = 7, rowHeight = 64.dp)
             }
-            list == null -> SkeletonList(rows = 7, rowHeight = 64.dp)
             else -> {
                 val recent = remember(list, userOnly, system) {
                     list.filter { it.lastAccess > 0 && (!userOnly || it.pkg !in system) }
@@ -477,51 +385,84 @@ private fun ActivityTab() {
                     recent.filter { it.name in names && now - it.lastAccess < 86_400_000L }
                         .map { it.pkg }.distinct().size
 
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile(appsIn24h("camera"), "Camera", Pal.Pink, Modifier.weight(1f))
-                    StatTile(appsIn24h("record_audio"), "Mic", Pal.Ignore, Modifier.weight(1f))
-                    StatTile(appsIn24h("fine_location", "coarse_location"), "Location", Pal.Foreground, Modifier.weight(1f))
-                    StatTile(appsIn24h("read_clipboard"), "Clipboard", Pal.Violet, Modifier.weight(1f))
-                }
-                Text(
-                    "Apps using each in the last 24 hours",
-                    color = Pal.TextLo,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 6.dp, bottom = 10.dp)
-                )
-                Segmented(
-                    listOf("User apps", "All apps"),
-                    if (userOnly) 0 else 1,
-                    { userOnly = it == 0 }
-                )
+                val fg = modeColors(4)
+                val ig = modeColors(1)
                 LazyColumn(
-                    Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    item(key = "tiles") {
+                        Column {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                StatTile(
+                                    appsIn24h("camera"), "Camera",
+                                    cs.tertiaryContainer, cs.onTertiaryContainer,
+                                    Modifier.weight(1f), groupShape(0, 4)
+                                )
+                                StatTile(
+                                    appsIn24h("record_audio"), "Mic",
+                                    ig.container, ig.onContainer,
+                                    Modifier.weight(1f), groupShape(1, 4)
+                                )
+                                StatTile(
+                                    appsIn24h("fine_location", "coarse_location"), "Location",
+                                    fg.container, fg.onContainer,
+                                    Modifier.weight(1f), groupShape(2, 4)
+                                )
+                                StatTile(
+                                    appsIn24h("read_clipboard"), "Clipboard",
+                                    cs.secondaryContainer, cs.onSecondaryContainer,
+                                    Modifier.weight(1f), groupShape(3, 4)
+                                )
+                            }
+                            Text(
+                                "Apps using each in the last 24 hours",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 12.dp)
+                            )
+                            ConnectedGroup(
+                                listOf("User apps", "All apps"),
+                                if (userOnly) 0 else 1,
+                                { userOnly = it == 0 }
+                            )
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
                     itemsIndexed(recent.take(150)) { i, e ->
                         val name = labels[e.pkg] ?: e.pkg
                         val live = now - e.lastAccess < 5 * 60_000L
-                        Row(
-                            Modifier.fillMaxWidth().entrance(i).glass().padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().entrance(i),
+                            shape = RoundedCornerShape(20.dp),
+                            color = cs.surfaceContainerLow
                         ) {
-                            AppIcon(e.pkg, name, 40.dp)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
+                            Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                AppIcon(e.pkg, name, 40.dp)
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = cs.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        prettyOp(e.name),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = cs.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                if (live) PulseDot(modeColors(0).accent, 6.dp)
                                 Text(
-                                    name,
-                                    color = Pal.TextHi,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    relTime(e.lastAccess),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = cs.onSurfaceVariant
                                 )
-                                Text(prettyOp(e.name), color = Pal.TextLo, fontSize = 12.sp)
                             }
-                            Spacer(Modifier.width(8.dp))
-                            if (live) PulseDot(Pal.Allow, 6.dp)
-                            Text(relTime(e.lastAccess), color = Pal.TextLo, fontSize = 12.sp)
                         }
                     }
                 }
@@ -547,6 +488,7 @@ private fun MoreTab() {
 
 @Composable
 private fun MoreMain(onDetails: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val toast = rememberToast()
@@ -596,9 +538,8 @@ private fun MoreMain(onDetails: () -> Unit) {
     if (confirmReset) {
         AlertDialog(
             onDismissRequest = { confirmReset = false },
-            containerColor = Pal.Surface,
-            titleContentColor = Pal.TextHi,
-            textContentColor = Pal.TextLo,
+            shape = RoundedCornerShape(32.dp),
+            icon = { Icon(Icons.Filled.Warning, contentDescription = null) },
             title = { Text("Reset everything?") },
             text = {
                 Text("Every mode saved by PermLens goes back to Default and the saved rules are cleared.")
@@ -626,112 +567,166 @@ private fun MoreMain(onDetails: () -> Unit) {
                         ruleCount = RuleStore.rules().size
                         toast.show("Reset $n ops to default")
                     }
-                }) { Text("Reset", color = Pal.Deny) }
+                }) { Text("Reset", color = cs.error) }
             },
             dismissButton = {
-                TextButton(onClick = { confirmReset = false }) { Text("Cancel", color = Pal.TextHi) }
+                TextButton(onClick = { confirmReset = false }) { Text("Cancel") }
             }
         )
     }
 
-    Box(Modifier.fillMaxSize()) {
+    ScreenFrame(
+        title = "More",
+        overlay = {
+            ToastPill(
+                visible = toast.shown,
+                text = toast.text,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+            )
+        }
+    ) {
         Column(
-            Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState()),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Spacer(Modifier.height(4.dp))
-            GradientTitle("More")
-            Column(Modifier.fillMaxWidth().glass().padding(16.dp)) {
-                Text("$ruleCount saved rules", color = Pal.TextHi, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Every mode you change is remembered and re-applied automatically " +
-                        "whenever Shizuku starts.",
-                    color = Pal.TextLo,
-                    fontSize = 13.sp
-                )
-            }
-            GradientButton("Re-apply rules now", {
-                scope.launch {
-                    val (ok, fail) = withContext(Dispatchers.IO) { RuleStore.applyAll(ctx) }
-                    RuleStore.log("manual re-apply: $ok ok, $fail failed")
-                    toast.show("Re-applied: $ok ok, $fail failed")
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(36.dp),
+                color = cs.primaryContainer,
+                contentColor = cs.onPrimaryContainer
+            ) {
+                Column(Modifier.padding(24.dp)) {
+                    Text("$ruleCount", style = MaterialTheme.typography.displaySmall)
+                    Text("saved rules", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Every mode you change is remembered and re-applied automatically " +
+                            "whenever Shizuku starts.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
-            }, Modifier.fillMaxWidth())
-            GradientButton("Backup rules to file", { exporter.launch("permlens-rules.json") },
-                Modifier.fillMaxWidth(), filled = false)
-            GradientButton("Restore rules from file", { importer.launch(arrayOf("*/*")) },
-                Modifier.fillMaxWidth(), filled = false)
-            GradientButton("Rules and history", onDetails, Modifier.fillMaxWidth(), filled = false)
-            GradientButton("Reset everything I changed", { confirmReset = true },
-                Modifier.fillMaxWidth(), filled = false)
-            Text("PermLens 0.4.0", color = Pal.TextLo, fontSize = 12.sp)
-            Spacer(Modifier.height(80.dp))
+            }
+            ExpressiveButton(
+                "Re-apply rules now",
+                {
+                    scope.launch {
+                        val (ok, fail) = withContext(Dispatchers.IO) { RuleStore.applyAll(ctx) }
+                        RuleStore.log("manual re-apply: $ok ok, $fail failed")
+                        toast.show("Re-applied: $ok ok, $fail failed")
+                    }
+                },
+                Modifier.fillMaxWidth(),
+                icon = Icons.Filled.Refresh
+            )
+            ExpressiveButton(
+                "Backup rules to file",
+                { exporter.launch("permlens-rules.json") },
+                Modifier.fillMaxWidth(),
+                kind = BtnKind.Tonal
+            )
+            ExpressiveButton(
+                "Restore rules from file",
+                { importer.launch(arrayOf("*/*")) },
+                Modifier.fillMaxWidth(),
+                kind = BtnKind.Tonal
+            )
+            ExpressiveButton(
+                "Rules and history",
+                onDetails,
+                Modifier.fillMaxWidth(),
+                kind = BtnKind.Tonal,
+                icon = Icons.Filled.Info
+            )
+            ExpressiveButton(
+                "Reset everything I changed",
+                { confirmReset = true },
+                Modifier.fillMaxWidth(),
+                kind = BtnKind.Danger,
+                icon = Icons.Filled.Warning
+            )
+            Text(
+                "PermLens 0.5.0",
+                style = MaterialTheme.typography.labelMedium,
+                color = cs.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 24.dp)
+            )
         }
-        ToastPill(
-            visible = toast.shown,
-            text = toast.text,
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
-        )
     }
 }
 
 @Composable
 private fun RulesHistoryView(onBack: () -> Unit) {
+    val cs = MaterialTheme.colorScheme
     val ctx = LocalContext.current
     val (labels, _) = rememberCatalog()
     val rules = remember { RuleStore.rules() }
     val history = remember { RuleStore.history() }
 
-    LazyColumn(
-        Modifier.fillMaxSize().statusBarsPadding().padding(horizontal = 16.dp),
-        contentPadding = PaddingValues(bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ScreenFrame(
+        title = "Rules",
+        onBack = onBack,
+        actions = {
+            FilledTonalIconButton(onClick = {
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, history.joinToString("\n"))
+                }
+                ctx.startActivity(Intent.createChooser(send, "Share history"))
+            }) {
+                Icon(Icons.Filled.Share, contentDescription = "Share history")
+            }
+            Spacer(Modifier.width(8.dp))
+        }
     ) {
-        item {
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BackPill(onBack)
-                Spacer(Modifier.weight(1f))
-                PillButton("Share history") {
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, history.joinToString("\n"))
+        LazyColumn(
+            Modifier.weight(1f).fillMaxWidth(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            item(key = "count") {
+                Text(
+                    "${rules.size} saved",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)
+                )
+            }
+            itemsIndexed(rules) { i, r ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth().entrance(i),
+                    shape = RoundedCornerShape(20.dp),
+                    color = cs.surfaceContainerLow
+                ) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                labels[r.pkg] ?: r.pkg,
+                                style = MaterialTheme.typography.titleMedium,
+                                color = cs.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                prettyOp(r.op),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = cs.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        ModeChip(r.mode)
                     }
-                    ctx.startActivity(Intent.createChooser(send, "Share history"))
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            GradientTitle("Rules")
-            Text("${rules.size} saved", color = Pal.TextLo, fontSize = 14.sp)
-        }
-        itemsIndexed(rules) { i, r ->
-            Row(
-                Modifier.fillMaxWidth().entrance(i).glass().padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        labels[r.pkg] ?: r.pkg,
-                        color = Pal.TextHi,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(prettyOp(r.op), color = Pal.TextLo, fontSize = 12.sp)
-                }
-                Spacer(Modifier.width(8.dp))
-                ModeChip(r.mode)
+            item(key = "historyTitle") { SectionLabel("History") }
+            items(history) { line ->
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = cs.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
             }
-        }
-        item {
-            Spacer(Modifier.height(8.dp))
-            Text("History", color = Pal.TextHi, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
-        items(history) { line ->
-            Text(line, color = Pal.TextLo, fontSize = 12.sp, modifier = Modifier.padding(vertical = 2.dp))
         }
     }
 }
