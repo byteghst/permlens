@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package dev.byteghst.permlens
 
@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -43,9 +42,9 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
-// Theme: Material 3 Expressive look on the stable material3 1.3.0 stack.
-// Dynamic color on Android 12+, hand-tuned static schemes as fallback (API 30).
-// See DESIGN.md for the rules that keep this consistent.
+// Theme: official Material 3 Expressive (material3 1.5.x).
+// MaterialExpressiveTheme + MotionScheme.expressive(), dynamic color on Android 12+,
+// hand-tuned static schemes as fallback (API 30). See DESIGN.md.
 // ---------------------------------------------------------------------------
 
 private val LightScheme = lightColorScheme(
@@ -126,13 +125,16 @@ private val DarkScheme = darkColorScheme(
     surfaceContainerHighest = Color(0xFF34343A)
 )
 
-/** Expressive shape scale: noticeably rounder than baseline M3. */
+/** Expressive shape scale: noticeably rounder than baseline M3, with the new "increased" steps. */
 private val AppShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
     small = RoundedCornerShape(12.dp),
     medium = RoundedCornerShape(20.dp),
     large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(40.dp)
+    largeIncreased = RoundedCornerShape(32.dp),
+    extraLarge = RoundedCornerShape(40.dp),
+    extraLargeIncreased = RoundedCornerShape(48.dp),
+    extraExtraLarge = RoundedCornerShape(64.dp)
 )
 
 /** Expressive type: heavier headline and title weights. */
@@ -160,11 +162,18 @@ fun PermLensTheme(content: @Composable () -> Unit) {
     } else {
         LightScheme
     }
-    MaterialTheme(colorScheme = scheme, typography = AppTypography, shapes = AppShapes, content = content)
+    MaterialExpressiveTheme(
+        colorScheme = scheme,
+        motionScheme = MotionScheme.expressive(),
+        shapes = AppShapes,
+        typography = AppTypography,
+        content = content
+    )
 }
 
 // ---------------------------------------------------------------------------
-// Motion: M3 Expressive spring tokens
+// Motion: these tokens equal the springs of MotionScheme.expressive(), for custom animations.
+// Official components get the same springs from the theme's motionScheme.
 // ---------------------------------------------------------------------------
 
 object Motion {
@@ -255,7 +264,7 @@ fun Modifier.entrance(index: Int): Modifier = composed {
 }
 
 // ---------------------------------------------------------------------------
-// Frame: large collapsing top app bar + body. Every screen uses this.
+// Frame: large flexible collapsing top app bar + body. Every screen uses this.
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -263,16 +272,23 @@ fun ScreenFrame(
     title: String,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
+    subtitle: String? = null,
     actions: @Composable RowScope.() -> Unit = {},
     overlay: @Composable BoxScope.() -> Unit = {},
     body: @Composable ColumnScope.() -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val subtitleContent: (@Composable () -> Unit)? = if (subtitle != null) {
+        { Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+    } else {
+        null
+    }
     Box(modifier.fillMaxSize().background(cs.surface)) {
         Column(Modifier.fillMaxSize().nestedScroll(scroll.nestedScrollConnection)) {
-            LargeTopAppBar(
+            LargeFlexibleTopAppBar(
                 title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                subtitle = subtitleContent,
                 navigationIcon = {
                     if (onBack != null) {
                         FilledTonalIconButton(onClick = onBack) {
@@ -281,7 +297,7 @@ fun ScreenFrame(
                     }
                 },
                 actions = actions,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = cs.surface,
                     scrolledContainerColor = cs.surfaceContainer
                 ),
@@ -330,7 +346,7 @@ fun PressSurface(
 
 enum class BtnKind { Filled, Tonal, Danger }
 
-/** Large pill button. The corners tighten while pressed. */
+/** Official expressive button: shape morphs on press, medium container height. */
 @Composable
 fun ExpressiveButton(
     text: String,
@@ -340,72 +356,74 @@ fun ExpressiveButton(
     icon: ImageVector? = null
 ) {
     val cs = MaterialTheme.colorScheme
-    val (bg, fg) = when (kind) {
-        BtnKind.Filled -> cs.primary to cs.onPrimary
-        BtnKind.Tonal -> cs.secondaryContainer to cs.onSecondaryContainer
-        BtnKind.Danger -> cs.errorContainer to cs.onErrorContainer
-    }
-    val src = remember { MutableInteractionSource() }
-    val pressed by src.collectIsPressedAsState()
-    val corner by animateDpAsState(if (pressed) 14.dp else 28.dp, Motion.fastSpatial(), label = "btnCorner")
     val haptic = LocalHapticFeedback.current
-    Surface(
-        onClick = {
-            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-            onClick()
-        },
-        modifier = modifier.heightIn(min = 56.dp),
-        shape = RoundedCornerShape(corner.coerceAtLeast(0.dp)),
-        color = bg,
-        contentColor = fg,
-        interactionSource = src
-    ) {
-        Row(
-            Modifier.padding(horizontal = 24.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (icon != null) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-            }
-            Text(text, style = MaterialTheme.typography.labelLarge.copy(fontSize = 16.sp))
+    val size = ButtonDefaults.MediumContainerHeight
+    val click: () -> Unit = {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        onClick()
+    }
+    val padding = ButtonDefaults.contentPaddingFor(size, hasStartIcon = icon != null)
+    val content: @Composable RowScope.() -> Unit = {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(ButtonDefaults.iconSizeFor(size)))
+            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
         }
+        Text(text, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+    }
+    when (kind) {
+        BtnKind.Filled -> Button(
+            onClick = click,
+            shapes = ButtonDefaults.shapes(),
+            modifier = modifier.heightIn(size),
+            contentPadding = padding,
+            content = content
+        )
+        BtnKind.Tonal -> FilledTonalButton(
+            onClick = click,
+            shapes = ButtonDefaults.shapes(),
+            modifier = modifier.heightIn(size),
+            contentPadding = padding,
+            content = content
+        )
+        BtnKind.Danger -> Button(
+            onClick = click,
+            shapes = ButtonDefaults.shapes(),
+            modifier = modifier.heightIn(size),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = cs.errorContainer,
+                contentColor = cs.onErrorContainer
+            ),
+            contentPadding = padding,
+            content = content
+        )
     }
 }
 
-/** Connected button group: the selected button turns fully round, the others stay tight. */
+/** Official connected button group: toggle buttons whose shapes morph when pressed and checked. */
 @Composable
 fun ConnectedGroup(options: List<String>, selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val cs = MaterialTheme.colorScheme
     val haptic = LocalHapticFeedback.current
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+    Row(
+        modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
+    ) {
         options.forEachIndexed { i, label ->
-            val sel = i == selected
-            val startC by animateDpAsState(if (sel || i == 0) 24.dp else 8.dp, Motion.spatial(), label = "gs")
-            val endC by animateDpAsState(if (sel || i == options.lastIndex) 24.dp else 8.dp, Motion.spatial(), label = "ge")
-            val bg by animateColorAsState(if (sel) cs.primary else cs.surfaceContainerHighest, Motion.effects(), label = "gb")
-            val fg by animateColorAsState(if (sel) cs.onPrimary else cs.onSurfaceVariant, Motion.effects(), label = "gf")
-            Surface(
-                onClick = {
-                    if (!sel) {
+            ToggleButton(
+                checked = i == selected,
+                onCheckedChange = {
+                    if (i != selected) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onSelect(i)
                     }
                 },
-                modifier = Modifier.weight(1f).height(48.dp),
-                shape = RoundedCornerShape(
-                    topStart = startC.coerceAtLeast(0.dp),
-                    topEnd = endC.coerceAtLeast(0.dp),
-                    bottomEnd = endC.coerceAtLeast(0.dp),
-                    bottomStart = startC.coerceAtLeast(0.dp)
-                ),
-                color = bg,
-                contentColor = fg
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                modifier = Modifier.weight(1f),
+                shapes = when (i) {
+                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
+                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
+                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 }
+            ) {
+                Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -580,60 +598,21 @@ fun StatTile(
     }
 }
 
-/** Shimmering placeholder rows while data loads. */
+/** Loading state: the official expressive morphing loading indicator. (Params kept for call sites.) */
 @Composable
 fun SkeletonList(rows: Int = 8, rowHeight: Dp = 70.dp) {
-    val cs = MaterialTheme.colorScheme
-    val base = cs.surfaceContainerHigh
-    val hi = cs.surfaceContainerHighest
-    val t = rememberInfiniteTransition(label = "skeleton")
-    val x by t.animateFloat(
-        initialValue = -1f,
-        targetValue = 2f,
-        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing)),
-        label = "skx"
-    )
-    Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        repeat(rows) {
-            Box(
-                Modifier.fillMaxWidth().height(rowHeight)
-                    .clip(RoundedCornerShape(24.dp))
-                    .drawBehind {
-                        drawRect(
-                            Brush.linearGradient(
-                                listOf(base, hi, base),
-                                start = Offset(x * size.width, 0f),
-                                end = Offset(x * size.width + size.width * 0.6f, 0f)
-                            )
-                        )
-                    }
-            )
-        }
+    Box(
+        Modifier.fillMaxWidth().padding(top = 56.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        LoadingIndicator(modifier = Modifier.size(64.dp))
     }
 }
 
-private fun blobPath(center: Offset, radius: Float, lobes: Int, amp: Float): Path {
-    val path = Path()
-    val steps = 144
-    for (i in 0..steps) {
-        val a = (i.toFloat() / steps) * (2f * Math.PI.toFloat())
-        val r = radius * (1f + amp * cos(lobes * a))
-        val x = center.x + r * cos(a)
-        val y = center.y + r * sin(a)
-        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-    }
-    path.close()
-    return path
-}
-
-/** Hero mark: two slowly counter-rotating scalloped blobs with a lens on top. */
+/** Hero mark: two counter-rotating Material cookie shapes with a lens drawn on top. */
 @Composable
 fun LensLogo(modifier: Modifier = Modifier) {
     val cs = MaterialTheme.colorScheme
-    val big = cs.primaryContainer
-    val small = cs.tertiaryContainer
-    val ring = cs.onTertiaryContainer
-    val accent = cs.primary
     val t = rememberInfiniteTransition(label = "lens")
     val spin by t.animateFloat(
         initialValue = 0f,
@@ -647,22 +626,40 @@ fun LensLogo(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "pulse"
     )
-    Canvas(modifier) {
-        val c = center
-        val base = size.minDimension * 0.30f
-        rotate(spin, c) {
-            drawPath(blobPath(c, base * 1.55f * pulse, 12, 0.045f), big)
+    val bigShape = remember { MaterialShapes.Cookie12Sided.toShape() }
+    val smallShape = remember { MaterialShapes.Cookie7Sided.toShape() }
+    val bigColor = cs.primaryContainer
+    val smallColor = cs.tertiaryContainer
+    val ring = cs.onTertiaryContainer
+    val accent = cs.primary
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.fillMaxSize(0.94f)
+                .graphicsLayer {
+                    rotationZ = spin
+                    scaleX = pulse
+                    scaleY = pulse
+                }
+                .clip(bigShape)
+                .background(bigColor)
+        )
+        Box(
+            Modifier.fillMaxSize(0.66f)
+                .graphicsLayer { rotationZ = -spin * 1.5f }
+                .clip(smallShape)
+                .background(smallColor)
+        )
+        Canvas(Modifier.fillMaxSize(0.44f)) {
+            val c = center
+            val m = size.minDimension
+            val r = m * 0.30f
+            drawCircle(ring, radius = r, center = c, style = Stroke(width = m * 0.07f))
+            val a = Math.toRadians(45.0)
+            val start = Offset(c.x + (r * cos(a)).toFloat(), c.y + (r * sin(a)).toFloat())
+            val end = Offset(c.x + (r * 1.9f * cos(a)).toFloat(), c.y + (r * 1.9f * sin(a)).toFloat())
+            drawLine(ring, start, end, strokeWidth = m * 0.09f, cap = StrokeCap.Round)
+            drawCircle(accent, radius = r * 0.28f, center = c)
         }
-        rotate(-spin * 1.5f, c) {
-            drawPath(blobPath(c, base * 1.15f, 8, 0.07f), small)
-        }
-        val lensR = base * 0.55f
-        drawCircle(ring, radius = lensR, center = c, style = Stroke(width = 8.dp.toPx()))
-        val a = Math.toRadians(45.0)
-        val start = Offset(c.x + (lensR * cos(a)).toFloat(), c.y + (lensR * sin(a)).toFloat())
-        val end = Offset(c.x + (lensR * 1.9f * cos(a)).toFloat(), c.y + (lensR * 1.9f * sin(a)).toFloat())
-        drawLine(ring, start, end, strokeWidth = 10.dp.toPx(), cap = StrokeCap.Round)
-        drawCircle(accent, radius = lensR * 0.22f, center = c)
     }
 }
 
