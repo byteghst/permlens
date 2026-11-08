@@ -135,8 +135,12 @@ object AppOpsRepo {
         return out.filterNot { isRetired(it.name) }
     }
 
-    /** Sets the mode for one op. Modes: 0 allow, 1 ignore, 2 deny, 3 default, 4 foreground. */
-    fun setMode(uid: Int, pkg: String, code: Int, mode: Int) {
+    /**
+     * Sets the mode for one op. Modes: 0 allow, 1 ignore, 2 deny, 3 default, 4 foreground.
+     * Successful changes are saved as rules (re-applied when Shizuku restarts) unless record is false.
+     */
+    fun setMode(uid: Int, pkg: String, code: Int, mode: Int, record: Boolean = true) {
         setModeMethod.invoke(service, code, uid, pkg, mode)
+        if (record) RuleStore.record(pkg, names[code], mode)
     }
 }
