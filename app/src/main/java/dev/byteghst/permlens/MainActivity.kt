@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     )
                                 }
-                                2 -> PermLensApp()
+                                2 -> PermLensRoot()
                                 else -> StatusScreen(
                                     current,
                                     onOpen = { openShizuku() },
