@@ -10,15 +10,6 @@ import java.util.Locale
 
 data class Rule(val pkg: String, val op: String, val mode: Int)
 
-fun modeLabel(mode: Int) = when (mode) {
-    0 -> "Allow"
-    1 -> "Ignore"
-    2 -> "Deny"
-    3 -> "Default"
-    4 -> "Foreground"
-    else -> "Mode $mode"
-}
-
 /** Persists the modes the user set (rules) plus a change history. Rules are re-applied automatically. */
 object RuleStore {
     private var dir: File? = null
@@ -46,6 +37,7 @@ object RuleStore {
 
     @Synchronized
     fun rules(): List<Rule> {
+        if (dir == null) return emptyList()
         val f = rulesFile()
         if (!f.exists()) return emptyList()
         return runCatching { parse(f.readText()) }.getOrDefault(emptyList())
@@ -56,13 +48,23 @@ object RuleStore {
         rulesFile().writeText(toJson(list))
     }
 
-    /** Records a change. Setting a rule to Default (3) removes it. */
+    /** Records a change. Setting a rule to Default (3) removes it. Never throws. */
     @Synchronized
     fun record(pkg: String, op: String, mode: Int) {
-        val list = rules().filterNot { it.pkg == pkg && it.op == op }.toMutableList()
-        if (mode != 3) list += Rule(pkg, op, mode)
-        save(list)
-        log("$pkg  $op -> ${modeLabel(mode)}")
+        if (dir == null) return
+        runCatching {
+            val list = rules().filterNot { it.pkg == pkg && it.op == op }.toMutableList()
+            if (mode != 3) list += Rule(pkg, op, mode)
+            save(list)
+            log("$pkg  $op -> ${modeLabel(mode)}")
+        }
+    }
+
+    @Synchronized
+    fun clearAll() {
+        if (dir == null) return
+        save(emptyList())
+        log("cleared all saved rules")
     }
 
     fun exportJson(): String = toJson(rules())
@@ -89,7 +91,7 @@ object RuleStore {
             try {
                 val uid = pm.getApplicationInfo(r.pkg, 0).uid
                 val code = AppOpsRepo.codeOf(r.op) ?: continue
-                AppOpsRepo.setMode(uid, r.pkg, code, r.mode)
+                AppOpsRepo.setMode(uid, r.pkg, code, r.mode, record = false)
                 ok++
             } catch (t: Throwable) {
                 fail++
@@ -100,12 +102,14 @@ object RuleStore {
 
     @Synchronized
     fun history(): List<String> {
+        if (dir == null) return emptyList()
         val f = historyFile()
         return if (f.exists()) f.readLines() else emptyList()
     }
 
     @Synchronized
     fun log(line: String) {
+        if (dir == null) return
         runCatching {
             val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
             val lines = history().toMutableList()
