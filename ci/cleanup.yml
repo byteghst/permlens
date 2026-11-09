@@ -1,0 +1,48 @@
+name: Cleanup old runs and releases
+
+# Weekly, or run it by hand from the Actions tab (you can change how many runs to keep).
+# Keeps: the newest N workflow runs, and the releases `latest`, `signing-key` and `build-error`.
+# Never touches runs that are still in progress.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+    inputs:
+      keep_runs:
+        description: 'How many of the newest finished runs to keep'
+        default: '5'
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      KEEP_RUNS: ${{ github.event.inputs.keep_runs || '5' }}
+    steps:
+      - name: Delete old workflow runs
+        run: |
+          gh run list -R "$REPO" --limit 1000 --json databaseId,status \
+            --jq "[.[] | select(.status == \"completed\")] | .[$KEEP_RUNS:] | .[].databaseId" |
+          while read -r id; do
+            gh run delete "$id" -R "$REPO" || true
+          done
+
+      - name: Delete stray releases and tags
+        run: |
+          gh release list -R "$REPO" --limit 200 --json tagName --jq '.[].tagName' |
+          while read -r tag; do
+            case "$tag" in
+              latest|signing-key|build-error) ;;
+              *) gh release delete "$tag" --cleanup-tag -y -R "$REPO" || true ;;
+            esac
+          done
