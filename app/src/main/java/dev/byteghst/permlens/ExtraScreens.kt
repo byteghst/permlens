@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package dev.byteghst.permlens
 
@@ -19,12 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -49,10 +45,10 @@ fun relTime(ms: Long): String =
 private data class TabSpec(val label: String, val icon: ImageVector)
 
 private val Tabs = listOf(
-    TabSpec("Apps", Icons.Filled.Home),
-    TabSpec("Ops", Icons.Filled.Build),
-    TabSpec("Activity", Icons.Filled.Notifications),
-    TabSpec("More", Icons.Filled.Settings)
+    TabSpec("Apps", AppIcons.Apps),
+    TabSpec("Ops", AppIcons.Tune),
+    TabSpec("Activity", AppIcons.History),
+    TabSpec("More", AppIcons.MoreHoriz)
 )
 
 @Composable
@@ -63,9 +59,9 @@ fun PermLensRoot() {
         containerColor = cs.surface,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            NavigationBar(containerColor = cs.surfaceContainer) {
+            ShortNavigationBar(containerColor = cs.surfaceContainer) {
                 Tabs.forEachIndexed { i, t ->
-                    NavigationBarItem(
+                    ShortNavigationBarItem(
                         selected = tab == i,
                         onClick = { tab = i },
                         icon = { Icon(t.icon, contentDescription = null) },
@@ -146,7 +142,7 @@ private fun OpsTab() {
         BackHandler { picked = null }
         OpHoldersScreen(p, onBack = { picked = null })
     } else {
-        ScreenFrame(title = "Operations") {
+        ScreenFrame(title = "Operations", subtitle = "Pick one to see which apps use it") {
             LazyColumn(
                 Modifier.weight(1f).fillMaxWidth(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
@@ -154,12 +150,6 @@ private fun OpsTab() {
             ) {
                 item(key = "header") {
                     Column {
-                        Text(
-                            "Pick one to see which apps use it",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = cs.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 8.dp, bottom = 10.dp)
-                        )
                         SearchField(query, { query = it }, "Search operations")
                         Spacer(Modifier.height(8.dp))
                     }
@@ -248,6 +238,7 @@ private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
 
     ScreenFrame(
         title = prettyOp(op.second),
+        subtitle = op.second,
         onBack = onBack,
         overlay = {
             ToastPill(
@@ -261,9 +252,7 @@ private fun OpHoldersScreen(op: Pair<Int, String>, onBack: () -> Unit) {
         val list = entries
         when {
             err != null -> ErrorCard("Failed to read", err, Modifier.padding(horizontal = 16.dp))
-            list == null -> Column(Modifier.padding(horizontal = 16.dp)) {
-                SkeletonList(rows = 6, rowHeight = 64.dp)
-            }
+            list == null -> SkeletonList(rows = 6, rowHeight = 64.dp)
             else -> {
                 val userCount = remember(list, system) { list.count { it.pkg !in system } }
                 val shown = remember(list, userOnly, system) {
@@ -361,6 +350,7 @@ private fun ActivityTab() {
 
     ScreenFrame(
         title = "Activity",
+        subtitle = "What your apps touched recently",
         actions = {
             FilledTonalIconButton(onClick = { reload++ }) {
                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
@@ -372,9 +362,7 @@ private fun ActivityTab() {
         val list = entries
         when {
             err != null -> ErrorCard("Failed to read", err, Modifier.padding(horizontal = 16.dp))
-            list == null -> Column(Modifier.padding(horizontal = 16.dp)) {
-                SkeletonList(rows = 7, rowHeight = 64.dp)
-            }
+            list == null -> SkeletonList(rows = 7, rowHeight = 64.dp)
             else -> {
                 val recent = remember(list, userOnly, system) {
                     list.filter { it.lastAccess > 0 && (!userOnly || it.pkg !in system) }
@@ -577,6 +565,7 @@ private fun MoreMain(onDetails: () -> Unit) {
 
     ScreenFrame(
         title = "More",
+        subtitle = "Rules, backup and history",
         overlay = {
             ToastPill(
                 visible = toast.shown,
@@ -646,7 +635,7 @@ private fun MoreMain(onDetails: () -> Unit) {
                 icon = Icons.Filled.Warning
             )
             Text(
-                "PermLens 0.5.0",
+                "PermLens 0.6.0",
                 style = MaterialTheme.typography.labelMedium,
                 color = cs.onSurfaceVariant,
                 modifier = Modifier.padding(start = 8.dp, top = 4.dp, bottom = 24.dp)
@@ -665,6 +654,7 @@ private fun RulesHistoryView(onBack: () -> Unit) {
 
     ScreenFrame(
         title = "Rules",
+        subtitle = "${rules.size} saved",
         onBack = onBack,
         actions = {
             FilledTonalIconButton(onClick = {
@@ -684,14 +674,6 @@ private fun RulesHistoryView(onBack: () -> Unit) {
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            item(key = "count") {
-                Text(
-                    "${rules.size} saved",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = cs.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp, bottom = 6.dp)
-                )
-            }
             itemsIndexed(rules) { i, r ->
                 Surface(
                     modifier = Modifier.fillMaxWidth().entrance(i),
