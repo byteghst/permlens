@@ -1,7 +1,15 @@
 .gradle/
+.kotlin/
 build/
 .idea/
 local.properties
+captures/
+.DS_Store
+*.log
+
+# Signing material and build output: never commit these
 *.p12
 *.jks
+*.keystore
 *.apk
+*.aab
