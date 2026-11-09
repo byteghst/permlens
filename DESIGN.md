@@ -39,6 +39,23 @@ Last UI overhaul: v0.6.0, official Material 3 Expressive (material3 1.5.0-rc01).
 7. Toasts: `rememberToast()` + `ToastPill` via `ScreenFrame(overlay = ...)`. Mode picker: `ModeSheet`.
 8. Version text "PermLens 0.6.0" in `MoreMain` is hard-coded; keep it in sync with `app/build.gradle.kts`.
 
+## Fonts
+- Font files live in `app/src/main/res/font/` (`space_grotesk_bold.ttf`, `space_grotesk_medium.ttf`,
+  `montserrat_variable.ttf`). Do not rename or delete them.
+- `HeadingFont` = Space Grotesk (Medium + Bold), internal. Used for `display*`, `headline*`, `titleLarge` and every number.
+- `BodyFont` = Montserrat, built from the single variable file with one `Font` entry per weight (400, 500, 600, 700)
+  via `FontVariation.weight(...)`. Used for `titleMedium`, `titleSmall`, `body*`, `label*`.
+- All 15 styles in `AppTypography` are set explicitly through the private helpers `TextStyle.body()` and
+  `TextStyle.heading()` in `Ui.kt`. Do not change this.
+- `AppText.kt` defines a top-level `@Composable fun Text(text: String, ...)` in package `dev.byteghst.permlens`.
+  Same-package declarations win over the star import `androidx.compose.material3.*`, so every `Text("...")` call in
+  the package goes through it. It draws each digit run (regex `\d+(?:[.,:]\d+)*`) in `HeadingFont` and the rest in the
+  theme style, and calls `androidx.compose.material3.Text` by its fully qualified name, so it does not recurse.
+  Do not delete or rename this file, and do not add `import androidx.compose.material3.Text` to other files.
+  (`MainActivity.kt` imports it explicitly and so bypasses the wrapper on purpose.)
+- Compose rule: `RoundedPolygon.toShape()` is `@Composable` in material3 1.5.x. Never wrap it in `remember { }`; call
+  it directly, as in `MaterialShapes.Cookie12Sided.toShape()` in `LensLogo`.
+
 ## Presets (per-app screen, FAB menu)
 Lockdown (Ignore camera, mic, locations, clipboard read, contacts, call log, SMS), No overlays (Deny
 `system_alert_window`, `picture_in_picture`), Quiet in background (Ignore `run_in_background`, `run_any_in_background`),
