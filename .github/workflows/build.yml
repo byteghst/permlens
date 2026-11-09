@@ -3,11 +3,15 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-    paths-ignore: ['README.md']
+    paths-ignore: ['README.md', 'DESIGN.md', 'ci/**']
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-apk
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,7 +29,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.4.1'
+
+      - name: Android SDK platform 37
+        run: |
+          sudo chown -R "$USER" "$ANDROID_HOME" 2>/dev/null || true
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" || true
 
       - name: Signing key (create once, reuse after)
         run: |
@@ -41,7 +51,9 @@ jobs:
           fi
 
       - name: Build
-        run: gradle --no-daemon :app:assembleRelease
+        run: |
+          touch build.log
+          gradle --no-daemon --console=plain :app:assembleRelease 2>&1 | tee build.log
 
       - name: Publish Latest build
         run: |
@@ -50,3 +62,22 @@ jobs:
           gh release create latest PermLens.apk -R "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" --title "Latest build" \
             --notes "Commit ${GITHUB_SHA::7}"
+          gh release delete build-error --cleanup-tag -y -R "$GITHUB_REPOSITORY" || true
+
+      - name: Report build errors
+        if: failure()
+        run: |
+          touch build.log
+          {
+            echo "Commit ${GITHUB_SHA::7} failed to build."
+            echo
+            echo '```'
+            grep -E '^e: |What went wrong|Execution failed|Could not |error:|FAILURE|not supported|requires' build.log | head -n 60 || true
+            echo '--- tail ---'
+            tail -n 40 build.log || true
+            echo '```'
+          } > errors.md
+          gh release delete build-error --cleanup-tag -y -R "$GITHUB_REPOSITORY" || true
+          gh release create build-error -R "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Build error" --notes-file errors.md
