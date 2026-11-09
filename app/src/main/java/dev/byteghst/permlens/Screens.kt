@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
 package dev.byteghst.permlens
 
@@ -8,17 +8,25 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -105,12 +113,9 @@ fun AppListScreen(
     }
     val count by animateIntAsState(shown.size, tween(500), label = "count")
 
-    ScreenFrame(title = "Apps") {
+    ScreenFrame(title = "Apps", subtitle = "Choose an app to inspect") {
         if (apps == null) {
-            Column(Modifier.padding(horizontal = 16.dp)) {
-                Text("Scanning apps\u2026", style = MaterialTheme.typography.bodyMedium, color = cs.onSurfaceVariant)
-                SkeletonList()
-            }
+            SkeletonList()
         } else {
             LazyColumn(
                 state = listState,
@@ -199,6 +204,92 @@ private fun relativeUsed(lastAccess: Long): String =
         ).toString()
     } else "never used"
 
+// ---------------------------------------------------------------------------
+// Presets: one-tap bundles, shown through the official expressive FAB menu.
+// ---------------------------------------------------------------------------
+
+private class Preset(val title: String, val icon: ImageVector, val ops: Set<String>?, val mode: Int)
+
+private val PRESETS = listOf(
+    Preset(
+        "Lockdown", Icons.Filled.Lock,
+        setOf(
+            "camera", "record_audio", "coarse_location", "fine_location",
+            "read_clipboard", "read_contacts", "read_call_log", "read_sms"
+        ),
+        1
+    ),
+    Preset("No overlays", AppIcons.Block, setOf("system_alert_window", "picture_in_picture"), 2),
+    Preset("Quiet in background", AppIcons.Snooze, setOf("run_in_background", "run_any_in_background"), 1),
+    Preset("Reset app", Icons.Filled.Refresh, null, 3)
+)
+
+/** The (op, newMode) changes a preset would make right now. Reset puts every changed op back to default. */
+private fun changesFor(p: Preset, list: List<OpInfo>): List<Pair<OpInfo, Int>> {
+    val names = p.ops
+    return if (names == null) {
+        list.filter { it.mode != it.defaultMode }.map { it to 3 }
+    } else {
+        list.filter { it.name in names && it.mode != p.mode }.map { it to p.mode }
+    }
+}
+
+@Composable
+private fun PresetsOverlay(
+    countFor: (Preset) -> Int,
+    onApply: (Preset) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cs = MaterialTheme.colorScheme
+    var expanded by remember { mutableStateOf(false) }
+    BackHandler(expanded) { expanded = false }
+    Box(modifier) {
+        if (expanded) {
+            Box(
+                Modifier.fillMaxSize()
+                    .background(cs.scrim.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { expanded = false }
+            )
+        }
+        FloatingActionButtonMenu(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 8.dp, bottom = 8.dp),
+            expanded = expanded,
+            button = {
+                ToggleFloatingActionButton(
+                    checked = expanded,
+                    onCheckedChange = { expanded = !expanded }
+                ) {
+                    val imageVector by remember {
+                        derivedStateOf {
+                            if (checkedProgress > 0.5f) Icons.Filled.Close else Icons.Filled.Add
+                        }
+                    }
+                    Icon(
+                        painter = rememberVectorPainter(imageVector),
+                        contentDescription = "Presets",
+                        modifier = Modifier.animateIcon({ checkedProgress })
+                    )
+                }
+            }
+        ) {
+            PRESETS.forEach { p ->
+                val n = countFor(p)
+                FloatingActionButtonMenuItem(
+                    onClick = {
+                        expanded = false
+                        onApply(p)
+                    },
+                    icon = { Icon(p.icon, contentDescription = null) },
+                    text = { Text(if (n == 0) "${p.title}: nothing to do" else "${p.title} ($n)") }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun OpsScreen(app: AppItem, onBack: () -> Unit) {
     var ops by remember { mutableStateOf<List<OpInfo>?>(null) }
@@ -224,6 +315,28 @@ fun OpsScreen(app: AppItem, onBack: () -> Unit) {
         }
     }
 
+    fun applyPreset(p: Preset) {
+        val current = ops ?: return
+        val changes = changesFor(p, current)
+        if (changes.isEmpty()) {
+            toast.show("${p.title}: nothing to change")
+            return
+        }
+        scope.launch {
+            try {
+                val fresh = withContext(Dispatchers.IO) {
+                    changes.forEach { (op, m) -> AppOpsRepo.setMode(app.uid, app.pkg, op.code, m) }
+                    AppOpsRepo.getOps(app.uid, app.pkg)
+                }
+                ops = fresh
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                toast.show("${p.title}: ${changes.size} changed")
+            } catch (t: Throwable) {
+                toast.show("Failed: " + (t.cause ?: t).toString())
+            }
+        }
+    }
+
     val target = editing
     if (target != null) {
         ModeSheet(
@@ -240,9 +353,10 @@ fun OpsScreen(app: AppItem, onBack: () -> Unit) {
                         ops = fresh
                         flash = target.code
                         val now = fresh.first { it.code == target.code }.mode
+                        val applied = now == m || (m == 3 && now == target.defaultMode)
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         toast.show(
-                            if (now == m) "${prettyOp(target.name)}: ${modeLabel(m)}"
+                            if (applied) "${prettyOp(target.name)}: ${modeLabel(m)}"
                             else "${prettyOp(target.name)}: system kept ${modeLabel(now)}"
                         )
                     } catch (t: Throwable) {
@@ -256,12 +370,20 @@ fun OpsScreen(app: AppItem, onBack: () -> Unit) {
 
     ScreenFrame(
         title = app.label,
+        subtitle = app.pkg,
         onBack = onBack,
         overlay = {
+            if (ops != null && error == null) {
+                PresetsOverlay(
+                    countFor = { p -> ops?.let { changesFor(p, it).size } ?: 0 },
+                    onApply = { applyPreset(it) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             ToastPill(
                 visible = toast.shown,
                 text = toast.text,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp)
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
             )
         }
     ) {
@@ -269,9 +391,7 @@ fun OpsScreen(app: AppItem, onBack: () -> Unit) {
         val list = ops
         when {
             err != null -> ErrorCard("Failed to read ops", err, Modifier.padding(horizontal = 16.dp))
-            list == null -> Column(Modifier.padding(horizontal = 16.dp)) {
-                SkeletonList(rows = 7, rowHeight = 64.dp)
-            }
+            list == null -> SkeletonList(rows = 7, rowHeight = 64.dp)
             else -> {
                 val shown = remember(list, activeOnly) {
                     list.filter { !activeOnly || it.active }
@@ -280,7 +400,7 @@ fun OpsScreen(app: AppItem, onBack: () -> Unit) {
                 val activeCount = remember(list) { list.count { it.active } }
                 LazyColumn(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 112.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     item(key = "hero") { OpsHero(app, list) }
@@ -319,16 +439,15 @@ private fun OpsHero(app: AppItem, list: List<OpInfo>) {
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
-                        app.pkg,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = cs.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        if (app.system) "System app" else "Installed app",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = cs.onSurface
                     )
-                    if (app.system) {
-                        Spacer(Modifier.height(6.dp))
-                        Tag("System")
-                    }
+                    Text(
+                        "${list.size} operations",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = cs.onSurfaceVariant
+                    )
                 }
             }
             Spacer(Modifier.height(14.dp))
