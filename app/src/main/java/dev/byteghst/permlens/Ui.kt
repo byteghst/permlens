@@ -30,6 +30,8 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -137,14 +139,22 @@ private val AppShapes = Shapes(
     extraExtraLarge = RoundedCornerShape(64.dp)
 )
 
-/** Expressive type: heavier headline and title weights. */
+/** Heading font. Files live in res/font (space_grotesk_medium.ttf, space_grotesk_bold.ttf). */
+private val HeadingFont = FontFamily(
+    Font(R.font.space_grotesk_medium, FontWeight.Medium),
+    Font(R.font.space_grotesk_bold, FontWeight.Bold)
+)
+
+/** Expressive type: Space Grotesk for headings, the system font for everything else. */
 private val AppTypography: Typography = Typography().let { t ->
     t.copy(
-        displaySmall = t.displaySmall.copy(fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp),
-        headlineLarge = t.headlineLarge.copy(fontWeight = FontWeight.ExtraBold),
-        headlineMedium = t.headlineMedium.copy(fontWeight = FontWeight.Bold),
-        headlineSmall = t.headlineSmall.copy(fontWeight = FontWeight.Bold),
-        titleLarge = t.titleLarge.copy(fontWeight = FontWeight.Bold),
+        displaySmall = t.displaySmall.copy(
+            fontFamily = HeadingFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
+        ),
+        headlineLarge = t.headlineLarge.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Bold),
+        headlineMedium = t.headlineMedium.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Bold),
+        headlineSmall = t.headlineSmall.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Medium),
+        titleLarge = t.titleLarge.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Medium),
         titleMedium = t.titleMedium.copy(fontWeight = FontWeight.SemiBold),
         labelLarge = t.labelLarge.copy(fontWeight = FontWeight.SemiBold),
         labelMedium = t.labelMedium.copy(fontWeight = FontWeight.SemiBold)
