@@ -626,8 +626,9 @@ fun LensLogo(modifier: Modifier = Modifier) {
         animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "pulse"
     )
-    val bigShape = remember { MaterialShapes.Cookie12Sided.toShape() }
-    val smallShape = remember { MaterialShapes.Cookie7Sided.toShape() }
+    // RoundedPolygon.toShape() is @Composable in material3 1.5.x, so it cannot go inside remember { }.
+    val bigShape = MaterialShapes.Cookie12Sided.toShape()
+    val smallShape = MaterialShapes.Cookie7Sided.toShape()
     val bigColor = cs.primaryContainer
     val smallColor = cs.tertiaryContainer
     val ring = cs.onTertiaryContainer
