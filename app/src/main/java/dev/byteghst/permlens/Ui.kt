@@ -30,8 +30,10 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.*
@@ -139,25 +141,59 @@ private val AppShapes = Shapes(
     extraExtraLarge = RoundedCornerShape(64.dp)
 )
 
-/** Heading font. Files live in res/font (space_grotesk_medium.ttf, space_grotesk_bold.ttf). */
-private val HeadingFont = FontFamily(
+/**
+ * Heading + number font. Files live in res/font (space_grotesk_medium.ttf, space_grotesk_bold.ttf).
+ * Also used by the Text wrapper in AppText.kt for every digit run.
+ */
+internal val HeadingFont = FontFamily(
     Font(R.font.space_grotesk_medium, FontWeight.Medium),
     Font(R.font.space_grotesk_bold, FontWeight.Bold)
 )
 
-/** Expressive type: Space Grotesk for headings, the system font for everything else. */
+/** Body font: Montserrat variable (res/font/montserrat_variable.ttf), one entry per weight we use. */
+internal val BodyFont = FontFamily(
+    Font(
+        R.font.montserrat_variable, FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(400))
+    ),
+    Font(
+        R.font.montserrat_variable, FontWeight.Medium,
+        variationSettings = FontVariation.Settings(FontVariation.weight(500))
+    ),
+    Font(
+        R.font.montserrat_variable, FontWeight.SemiBold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(600))
+    ),
+    Font(
+        R.font.montserrat_variable, FontWeight.Bold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(700))
+    )
+)
+
+private fun TextStyle.body(weight: FontWeight? = null): TextStyle =
+    copy(fontFamily = BodyFont, fontWeight = weight ?: fontWeight)
+
+private fun TextStyle.heading(weight: FontWeight): TextStyle =
+    copy(fontFamily = HeadingFont, fontWeight = weight)
+
+/** Type scale: Space Grotesk for display/headline/titleLarge, Montserrat for everything else. */
 private val AppTypography: Typography = Typography().let { t ->
     t.copy(
-        displaySmall = t.displaySmall.copy(
-            fontFamily = HeadingFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.5).sp
-        ),
-        headlineLarge = t.headlineLarge.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Bold),
-        headlineMedium = t.headlineMedium.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Bold),
-        headlineSmall = t.headlineSmall.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Medium),
-        titleLarge = t.titleLarge.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Medium),
-        titleMedium = t.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-        labelLarge = t.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-        labelMedium = t.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+        displayLarge = t.displayLarge.heading(FontWeight.Bold),
+        displayMedium = t.displayMedium.heading(FontWeight.Bold),
+        displaySmall = t.displaySmall.heading(FontWeight.Bold).copy(letterSpacing = (-0.5).sp),
+        headlineLarge = t.headlineLarge.heading(FontWeight.Bold),
+        headlineMedium = t.headlineMedium.heading(FontWeight.Bold),
+        headlineSmall = t.headlineSmall.heading(FontWeight.Medium),
+        titleLarge = t.titleLarge.heading(FontWeight.Medium),
+        titleMedium = t.titleMedium.body(FontWeight.SemiBold),
+        titleSmall = t.titleSmall.body(FontWeight.SemiBold),
+        bodyLarge = t.bodyLarge.body(),
+        bodyMedium = t.bodyMedium.body(),
+        bodySmall = t.bodySmall.body(),
+        labelLarge = t.labelLarge.body(FontWeight.SemiBold),
+        labelMedium = t.labelMedium.body(FontWeight.SemiBold),
+        labelSmall = t.labelSmall.body(FontWeight.Medium)
     )
 }
 
