@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Release signing comes from the environment (CI secrets). Without it (forks, local builds)
+// the release build falls back to the debug key, so the project still builds for anyone.
+val keystorePath: String? = System.getenv("KEYSTORE_PATH")
+val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")
+val hasReleaseKey = keystorePath != null && keystorePassword != null
+
 android {
     namespace = "dev.byteghst.permlens"
     compileSdk = 37
@@ -16,18 +22,20 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file(System.getenv("KEYSTORE_PATH") ?: "release.p12")
-            storePassword = "permlens-key"
-            keyAlias = "permlens"
-            keyPassword = "permlens-key"
+        if (hasReleaseKey) {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                keyAlias = "permlens"
+                keyPassword = keystorePassword
+            }
         }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.getByName(if (hasReleaseKey) "release" else "debug")
         }
     }
 
