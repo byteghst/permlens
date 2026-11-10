@@ -3,7 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main, master]
-    paths-ignore: ['README.md', 'DESIGN.md', 'ci/**']
+    paths-ignore: ['README.md', 'DESIGN.md', 'ROADMAP.md', 'SECURITY.md', 'ci/**']
   workflow_dispatch:
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
-      KEYSTORE_PATH: ${{ github.workspace }}/release.p12
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -37,17 +37,21 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37" "build-tools;36.0.0" || true
 
-      - name: Signing key (create once, reuse after)
+      # The signing key lives only in repository secrets (KEYSTORE_BASE64, KEYSTORE_PASSWORD).
+      # Forks have no secrets and build with the debug key; the main repo fails loudly instead.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          if gh release download signing-key -p release.p12 -D . -R "$GITHUB_REPOSITORY" 2>/dev/null; then
-            echo "Reusing stored signing key"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_REPOSITORY" = "byteghst/permlens" ]; then
+            echo "SIGNING SECRETS MISSING: add KEYSTORE_BASE64 and KEYSTORE_PASSWORD under Settings > Secrets and variables > Actions" > build.log
+            echo "::error::Add the repository secrets KEYSTORE_BASE64 and KEYSTORE_PASSWORD (Settings > Secrets and variables > Actions)."
+            exit 1
           else
-            keytool -genkeypair -keystore release.p12 -storetype PKCS12 \
-              -storepass permlens-key -keypass permlens-key -alias permlens \
-              -keyalg RSA -keysize 2048 -validity 36500 -dname "CN=PermLens, O=byteghst"
-            gh release create signing-key release.p12 -R "$GITHUB_REPOSITORY" \
-              --target "$GITHUB_SHA" --latest=false \
-              --title "signing-key" --notes "Persistent signing key. Do not delete."
+            echo "No signing secrets: building with the debug key."
           fi
 
       - name: Build
@@ -72,7 +76,7 @@ jobs:
             echo "Commit ${GITHUB_SHA::7} failed to build."
             echo
             echo '```'
-            grep -E '^e: |What went wrong|Execution failed|Could not |error:|FAILURE|not supported|requires' build.log | head -n 60 || true
+            grep -E '^e: |What went wrong|Execution failed|Could not |error:|FAILURE|not supported|requires|SIGNING SECRETS' build.log | head -n 60 || true
             echo '--- tail ---'
             tail -n 40 build.log || true
             echo '```'
