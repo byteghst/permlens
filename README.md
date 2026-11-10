@@ -35,11 +35,13 @@ Design rules, file map and upgrade notes are in [DESIGN.md](DESIGN.md). Read it 
 Kotlin, Jetpack Compose, Material 3 1.5.0-rc01, AGP 9.2, Gradle 9.4.1, Kotlin 2.3.10, compileSdk 37, Shizuku API 13.1.5.
 
 ## Build
-Every push to `main` builds an APK in GitHub Actions and publishes it to the **Latest build** release. Release builds are signed in CI with a persistent key so that updates install over earlier versions.
+Every push to `main` builds an APK in GitHub Actions and publishes it to the **Latest build** release.
+
+**Signing:** release builds are signed with a key stored in repository secrets (`KEYSTORE_BASE64`, a PKCS12 keystore with alias `permlens`, and `KEYSTORE_PASSWORD`). The main repository's build fails if they are missing. Forks and local builds without these secrets are signed with the debug key, so the project builds for anyone. Builds signed with different keys cannot update each other: uninstall before switching.
 
 If a build fails, the workflow posts the Gradle errors to a release named **build-error**. Read it there instead of digging through the Actions log.
 
-`ci/cleanup.yml` is an optional weekly workflow that removes old workflow runs and stray releases. Copy it to `.github/workflows/` to enable it.
+`ci/cleanup.yml` is a weekly workflow that removes old workflow runs and stray releases (it keeps `latest` and `build-error`). Copy it to `.github/workflows/` to enable it.
 
 ## Project layout
 - `app/src/main/java/dev/byteghst/permlens/`
@@ -48,7 +50,7 @@ If a build fails, the workflow posts the Gradle errors to a release named **buil
   - `MainActivity.kt`: Shizuku state, onboarding, crash screen
   - `AppOpsRepo.kt`, `RuleStore.kt`, `PermLensApplication.kt`: AppOps access, saved rules, auto re-apply
 - `app/src/main/res/font/`: Space Grotesk and Montserrat
-- `.github/workflows/build.yml`: CI
+- `.github/workflows/`: CI (`build.yml`, `cleanup.yml`)
 - `ci/`: staged workflow files
 - `licenses/`: license texts for bundled fonts
 
