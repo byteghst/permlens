@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import rikka.shizuku.Shizuku
 
@@ -130,6 +131,9 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// The onboarding and crash screens set the font families explicitly (Space Grotesk for headings,
+// Montserrat for the rest) so they always match the app, whatever the theme passes down.
+
 @Composable
 private fun StepRow(text: String, done: Boolean) {
     val cs = MaterialTheme.colorScheme
@@ -149,7 +153,7 @@ private fun StepRow(text: String, done: Boolean) {
         Spacer(Modifier.width(14.dp))
         Text(
             text,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleMedium.copy(fontFamily = BodyFont, fontWeight = FontWeight.SemiBold),
             color = if (done) cs.onSurface else cs.onSurfaceVariant
         )
     }
@@ -165,9 +169,17 @@ private fun StatusScreen(status: ShizukuStatus, onOpen: () -> Unit, onGrant: () 
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         LensLogo(Modifier.size(280.dp))
-        Text("PermLens", style = MaterialTheme.typography.displaySmall, color = cs.onSurface)
+        Text(
+            "PermLens",
+            style = MaterialTheme.typography.displaySmall.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Bold),
+            color = cs.onSurface
+        )
         Spacer(Modifier.height(4.dp))
-        Text("See what every app can do", style = MaterialTheme.typography.bodyLarge, color = cs.onSurfaceVariant)
+        Text(
+            "See what every app can do",
+            style = MaterialTheme.typography.bodyLarge.copy(fontFamily = BodyFont, fontWeight = FontWeight.Normal),
+            color = cs.onSurfaceVariant
+        )
         Spacer(Modifier.height(28.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -198,7 +210,11 @@ private fun CrashScreen(text: String, onShare: () -> Unit, onDismiss: () -> Unit
         modifier = Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("The app crashed last time", style = MaterialTheme.typography.headlineSmall, color = cs.error)
+        Text(
+            "The app crashed last time",
+            style = MaterialTheme.typography.headlineSmall.copy(fontFamily = HeadingFont, fontWeight = FontWeight.Medium),
+            color = cs.error
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ExpressiveButton("Share log", onShare)
             ExpressiveButton("Dismiss", onDismiss, kind = BtnKind.Tonal)
@@ -209,7 +225,11 @@ private fun CrashScreen(text: String, onShare: () -> Unit, onDismiss: () -> Unit
             color = cs.surfaceContainerHigh
         ) {
             SelectionContainer(Modifier.verticalScroll(rememberScrollState()).padding(16.dp)) {
-                Text(text, style = MaterialTheme.typography.bodySmall, color = cs.onSurfaceVariant)
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodySmall.copy(fontFamily = BodyFont),
+                    color = cs.onSurfaceVariant
+                )
             }
         }
     }
