@@ -22,11 +22,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.*
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -44,8 +47,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.cos
-import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
 // Theme: official Material 3 Expressive (material3 1.5.x).
@@ -658,139 +659,168 @@ fun SkeletonList(rows: Int = 8, rowHeight: Dp = 70.dp) {
 }
 
 /**
- * Hero mark, same animation as the logo on the website: a pulsing glow, a slowly spinning dotted
- * orbit, two counter-rotating Material cookie shapes, the lens ring drawing itself in, the handle
- * sweeping out and a light scanning along it. Colors follow the theme.
+ * The exact PermLens logo from the website (traverse, /permlens), drawn on a Canvas in the SVG's own
+ * 400-unit coordinates with the same brand colors, timings and easing. It plays once on entry (ring
+ * draws in, bar sweeps across, the two lens halves slide in) and then keeps going: the halves breathe,
+ * a light scans along the bar, the dotted orbit turns and the glow pulses.
+ * These are fixed brand colors on purpose, not theme colors. Keep it in sync with permlens.css.
  */
 @Composable
 fun LensLogo(modifier: Modifier = Modifier) {
-    val cs = MaterialTheme.colorScheme
-    val t = rememberInfiniteTransition(label = "lens")
-    val spin by t.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(26000, easing = LinearEasing)),
-        label = "spin"
-    )
+    val cyan = Color(0xFF00F2FF)
+    val navy = Color(0xFF020A16)
+    val ease = remember { CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f) }
+    val easeInOut = remember { CubicBezierEasing(0.42f, 0f, 0.58f, 1f) }
+
+    val t = rememberInfiniteTransition(label = "logo")
     val orbit by t.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(40000, easing = LinearEasing)),
+        animationSpec = infiniteRepeatable(tween(50000, easing = LinearEasing)),
         label = "orbit"
-    )
-    val pulse by t.animateFloat(
-        initialValue = 0.97f,
-        targetValue = 1.04f,
-        animationSpec = infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse"
     )
     val glow by t.animateFloat(
         initialValue = 0.22f,
-        targetValue = 0.62f,
-        animationSpec = infiniteRepeatable(tween(2300, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        targetValue = 0.6f,
+        animationSpec = infiniteRepeatable(tween(2250, easing = easeInOut), RepeatMode.Reverse),
         label = "glow"
     )
     val scan by t.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(2800, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        animationSpec = infiniteRepeatable(tween(3400, easing = easeInOut), RepeatMode.Reverse),
         label = "scan"
     )
-    val ringSweep = remember { Animatable(0f) }
-    val handle = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { ringSweep.animateTo(360f, tween(1300, easing = FastOutSlowInEasing)) }
+    val breathe by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(5000, easing = easeInOut), RepeatMode.Reverse),
+        label = "breathe"
+    )
+
+    val ring = remember { Animatable(0f) }
+    val bar = remember { Animatable(0f) }
+    val aperture = remember { Animatable(0f) }
+    val late = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { ring.animateTo(1f, tween(1500, easing = ease)) }
     LaunchedEffect(Unit) {
         delay(900)
-        handle.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
+        bar.animateTo(1f, tween(1000, easing = ease))
+    }
+    LaunchedEffect(Unit) {
+        delay(700)
+        aperture.animateTo(1f, tween(1000, easing = ease))
+    }
+    LaunchedEffect(Unit) {
+        delay(2000)
+        late.animateTo(1f, tween(400))
     }
 
-    // RoundedPolygon.toShape() is @Composable in material3 1.5.x, so it cannot go inside remember { }.
-    val bigShape = MaterialShapes.Cookie12Sided.toShape()
-    val smallShape = MaterialShapes.Cookie7Sided.toShape()
-    val bigColor = cs.primaryContainer
-    val smallColor = cs.tertiaryContainer
-    val ring = cs.onTertiaryContainer
-    val accent = cs.primary
-    val glowColor = cs.primary
-    val pn = ((pulse - 0.97f) / 0.07f).coerceIn(0f, 1f)
+    // The two lens halves, in SVG units: circle r=66.5 around (200,200), split by the bar's gap.
+    val half1 = remember {
+        Path().apply {
+            moveTo(222.63f, 137.49f)
+            lineTo(137.49f, 222.63f)
+            arcTo(Rect(133.5f, 133.5f, 266.5f, 266.5f), 160.1f, 129.8f, false)
+            close()
+        }
+    }
+    val half2 = remember {
+        Path().apply {
+            moveTo(262.51f, 177.37f)
+            lineTo(177.37f, 262.51f)
+            arcTo(Rect(133.5f, 133.5f, 266.5f, 266.5f), 109.9f, -129.8f, false)
+            close()
+        }
+    }
 
-    Box(modifier, contentAlignment = Alignment.Center) {
-        // glow halo
-        Canvas(Modifier.fillMaxSize()) {
-            val c = center
-            val rad = size.minDimension * 0.55f
-            drawCircle(
-                brush = Brush.radialGradient(
-                    colors = listOf(glowColor.copy(alpha = glow), Color.Transparent),
-                    center = c,
-                    radius = rad * (0.92f + 0.16f * pn)
-                ),
-                radius = rad,
-                center = c
+    Canvas(modifier) {
+        val logo = size.minDimension * 0.8f
+        val s = logo / 400f
+        val c = this.center
+
+        // glow behind the tile (the website's drop-shadow pulse)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(cyan.copy(alpha = glow), Color.Transparent),
+                center = c,
+                radius = logo * 0.78f
+            ),
+            radius = logo * 0.78f,
+            center = c
+        )
+
+        withTransform({
+            translate((size.width - logo) / 2f, (size.height - logo) / 2f)
+            scale(s, s, pivot = Offset.Zero)
+        }) {
+            val mid = Offset(200f, 200f)
+
+            // tile
+            drawRoundRect(
+                color = navy,
+                topLeft = Offset(8f, 8f),
+                size = Size(384f, 384f),
+                cornerRadius = CornerRadius(100f, 100f)
             )
-        }
-        // two counter-rotating cookies
-        Box(
-            Modifier.fillMaxSize(0.84f)
-                .graphicsLayer {
-                    rotationZ = spin
-                    scaleX = pulse
-                    scaleY = pulse
-                }
-                .clip(bigShape)
-                .background(bigColor)
-        )
-        Box(
-            Modifier.fillMaxSize(0.62f)
-                .graphicsLayer { rotationZ = -spin * 1.5f }
-                .clip(smallShape)
-                .background(smallColor)
-        )
-        // spinning dotted orbit
-        Canvas(Modifier.fillMaxSize()) {
-            val c = center
-            val m = size.minDimension
-            val rr = m * 0.47f
-            val n = 48
-            rotate(orbit, pivot = c) {
-                for (i in 0 until n) {
-                    val a = 2.0 * Math.PI * i / n
-                    val big = i % 6 == 0
-                    drawCircle(
-                        color = glowColor.copy(alpha = if (big) 0.9f else 0.45f),
-                        radius = m * (if (big) 0.011f else 0.006f),
-                        center = Offset(c.x + (rr * cos(a)).toFloat(), c.y + (rr * sin(a)).toFloat())
+            drawRoundRect(
+                color = cyan.copy(alpha = 0.14f),
+                topLeft = Offset(8f, 8f),
+                size = Size(384f, 384f),
+                cornerRadius = CornerRadius(100f, 100f),
+                style = Stroke(width = 2f)
+            )
+
+            // dotted orbit, turning slowly
+            rotate(orbit, pivot = mid) {
+                drawCircle(
+                    color = cyan.copy(alpha = 0.55f),
+                    radius = 172f,
+                    center = mid,
+                    style = Stroke(
+                        width = 2.4f,
+                        cap = StrokeCap.Round,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 17f), 0f)
                     )
-                }
+                )
             }
-        }
-        // lens: ring draws in, handle sweeps out, aperture breathes, light scans the handle
-        Canvas(Modifier.fillMaxSize(0.44f)) {
-            val c = center
-            val m = size.minDimension
-            val r = m * 0.30f
+
+            // ring draws in clockwise from the top
             drawArc(
-                color = ring,
+                color = cyan,
                 startAngle = -90f,
-                sweepAngle = ringSweep.value,
+                sweepAngle = 360f * ring.value,
                 useCenter = false,
-                topLeft = Offset(c.x - r, c.y - r),
-                size = Size(r * 2f, r * 2f),
-                style = Stroke(width = m * 0.07f, cap = StrokeCap.Round)
+                topLeft = Offset(200f - 131.25f, 200f - 131.25f),
+                size = Size(262.5f, 262.5f),
+                style = Stroke(width = 37.5f)
             )
-            val a = Math.toRadians(45.0)
-            val start = Offset(c.x + (r * cos(a)).toFloat(), c.y + (r * sin(a)).toFloat())
-            val end = Offset(c.x + (r * 1.9f * cos(a)).toFloat(), c.y + (r * 1.9f * sin(a)).toFloat())
-            val h = handle.value
-            if (h > 0f) {
-                val hEnd = Offset(start.x + (end.x - start.x) * h, start.y + (end.y - start.y) * h)
-                drawLine(ring, start, hEnd, strokeWidth = m * 0.09f, cap = StrokeCap.Round)
+
+            // bar sweeps from lower-left to upper-right
+            val bp = bar.value
+            if (bp > 0f) {
+                drawLine(
+                    color = cyan,
+                    start = Offset(107.2f, 292.8f),
+                    end = Offset(107.2f + 185.6f * bp, 292.8f - 185.6f * bp),
+                    strokeWidth = 32.3f
+                )
             }
-            drawCircle(accent, radius = r * 0.28f * (0.9f + 0.2f * pn), center = c)
-            if (h >= 1f) {
-                val sp = Offset(start.x + (end.x - start.x) * scan, start.y + (end.y - start.y) * scan)
-                drawCircle(glowColor.copy(alpha = 0.35f), radius = m * 0.07f, center = sp)
-                drawCircle(Color.White, radius = m * 0.025f, center = sp)
+
+            // lens halves slide in, then breathe
+            val ap = aperture.value
+            val br = breathe * late.value
+            val o1 = -34f * (1f - ap) - 5f * br
+            val o2 = 34f * (1f - ap) + 5f * br
+            withTransform({ translate(o1, o1) }) { drawPath(half1, cyan.copy(alpha = ap)) }
+            withTransform({ translate(o2, o2) }) { drawPath(half2, cyan.copy(alpha = ap)) }
+
+            // light scanning along the bar
+            val lt = late.value
+            if (lt > 0f) {
+                val sp = Offset(200f - 92f + 184f * scan, 200f + 92f - 184f * scan)
+                drawCircle(color = cyan.copy(alpha = 0.35f * lt), radius = 15f, center = sp)
+                drawCircle(color = Color.White.copy(alpha = 0.9f * lt), radius = 7f, center = sp)
             }
         }
     }
